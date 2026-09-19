@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import gemmi
 import httpx
 import pandas as pd
 
@@ -130,7 +131,6 @@ cif_text = response_atoms.text
 # print(cif_text)
 
 # read residues surrounding directly from cif
-import gemmi
 
 doc = gemmi.cif.read_string(cif_text)
 block = doc.sole_block()
@@ -161,8 +161,11 @@ def search_nonpolymer_f(df_structure: pd.DataFrame):
 
         nonpolymer_entities = extract_graphsql(pdb_code=pdb_code)
 
-        # TODO: function call or transform nonpolymer_entities into a big list/dict
-        # TODO: and return everything, handled by an external function (to be defined)
+        # transform nonpolymer_entities into a big list/dict and return everything, handled by an external function (to be defined)
+        ligand_ids = read_nonpolymer(non_pol=nonpolymer_entities)
+
+        # HACK search atoms around
+        a_around = search_surround(pdb_code=pdb_code, ligands_ids=ligand_ids)
 
 
 def extract_graphsql(pdb_code: str):
@@ -200,3 +203,48 @@ def extract_graphsql(pdb_code: str):
 
     data = response_graph.json()
     return data["data"]["entry"]["nonpolymer_entities"]
+
+
+def read_nonpolymer(non_pol):
+
+    for f in non_pol:
+        comp_id = f["rcsb_nonpolymer_entity_container_identifiers"][
+            "nonpolymer_comp_id"
+        ]
+
+        if comp_id == "CU":
+            metal_entity = f
+            print("Metal:", comp_id)
+            print("Asym IDs:", comp_id["asym_ids"])
+
+    if metal_entity is None:
+        raise ValueError(f"Nessuna entita' CU trovata per {pdb_code}")
+
+    return comp_id["asym_ids"]
+
+
+def search_surround(pdb_code, ligands_ids):
+
+    url_atoms = f"https://models.rcsb.org/v1/{pdb_code}/atoms"
+
+    for l in ligands_ids:
+        params = {
+            "label_asym_id": asym_ids[0],
+            "encoding": "cif",
+            "copy_all_categories": "false",
+            "download": "false",
+        }
+        response_atoms = httpx.get(
+            url_atoms,
+            params=params,
+        )
+        response_atoms.raise_for_status()
+        cif_text = response_atoms.text
+        doc = gemmi.cif.read_string(cif_text)
+        block = doc.sole_block()
+
+        data = block.get_mmcif_category("_struct_conn")
+        idx = data["id"].index("metalc21")
+        connection = {key: values[idx] for key, values in data.items()}
+
+        return connection
