@@ -1,0 +1,10 @@
+[
+    {
+        "id_uniprot": "P00450",
+        "ligands": "",
+        "metal_ions": [
+            "CU", "ZN"
+        ],
+        "same_pdb": "True"
+    }
+]
